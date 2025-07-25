@@ -40,10 +40,10 @@ FastAPI-based CRM system that manages customer records, orders, and addresses wi
 
 ### Prerequisites
 
-- Python 3.13.5
-- Upgraded pip for package management
+- Python 3.13.5 or above
+- Upgraded `pip` for package management
 
-### Get Started
+### Getting Started
 
 1. Clone the repository:
    ```bash
@@ -62,7 +62,7 @@ FastAPI-based CRM system that manages customer records, orders, and addresses wi
    pip install -r requirements.txt
    ```
 
-3. Run all tests (if any import issues, make sure you installed the requirements as described above):
+3. Run all tests (if any import issues, make sure you installed the requirements as described above). 
 This step will create `test.db` file inside `tests` directory.
    ```bash
    pytest
