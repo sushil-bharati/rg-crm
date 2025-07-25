@@ -408,3 +408,112 @@ def test_analytics_orders_by_billing_zip(test_db):
     assert data[0]["order_count"] == 15
     assert data[1]["zip_code"] == "12345-6789"
     assert data[1]["order_count"] == 7
+
+def test_analytics_in_store_most_purchases_hours(test_db):
+    # Create test customer first
+    customer_data = {
+        "telephone": "123-456-7890",
+        "email": "test@example.com",
+        "first_name": "John",
+        "last_name": "Doe",
+        "addresses": [
+            {
+                "type": "billing",
+                "street": "123 Main St",
+                "city": "Test City",
+                "state": "TS",
+                "zip_code": "12345-6789"
+            }
+        ]
+    }
+    customer_response = client.post("/customers/", json=customer_data)
+    customer_id = customer_response.json()["id"]
+    billing_address_id = customer_response.json()["addresses"][0]["id"]
+
+    # Create 10 orders
+    # BEWARE: hour boundary cross may pose issues
+    # for now, keeping simple
+    for _ in range(10):
+        order_data = {
+            "order_type": "in_store",
+            "total_amount": random.random(),
+            "billing_address_id": billing_address_id,
+            "shipping_address_ids": []
+        }
+        client.post(f"/customers/{customer_id}/orders/", json=order_data)
+
+    # Test in-store hours analytics
+    response = client.get("/analytics/in-store/hours/")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) > 0
+    assert data[0]["order_count"] == 10
+
+def test_analytics_in_store_top_5_ordering_customers(test_db):
+    # Create 10 customers with varying numbers of in-store orders
+    customers = []
+    for i in range(10):
+        customer_data = {
+            "telephone": f"123-456-789{i}",
+            "email": f"customer{i}@example.com",
+            "first_name": f"Customer{i}",
+            "last_name": f"Test{i}",
+            "addresses": [
+                {
+                    "type": "billing",
+                    "street": f"{100 + i} Main St",
+                    "city": "Test City",
+                    "state": "TS",
+                    "zip_code": f"1234{i}"
+                }
+            ]
+        }
+        customer_response = client.post("/customers/", json=customer_data)
+        customers.append({
+            "id": customer_response.json()["id"],
+            "billing_address_id": customer_response.json()["addresses"][0]["id"],
+            "first_name": f"Customer{i}",
+            "last_name": f"Test{i}"
+        })
+    
+    # Define the order counts for each customer
+    # Top 5 customers should have: 15, 12, 10, 8, 6 orders respectively
+    # Bottom 5 customers should have: 5, 4, 3, 2, 1 orders respectively
+    order_counts = [15, 12, 10, 8, 6, 5, 4, 3, 2, 1]
+    
+    # Create orders for each customer according to the planned counts
+    for i, customer in enumerate(customers):
+        for _ in range(order_counts[i]):
+            order_data = {
+                "order_type": "in_store",
+                "total_amount": 100.0 + random.random(),
+                "billing_address_id": customer["billing_address_id"],
+                "shipping_address_ids": []
+            }
+            client.post(f"/customers/{customer['id']}/orders/", json=order_data)
+    
+    # Test top in-store customers with max orders (should return top 5 by default)
+    response = client.get("/analytics/in-store/top-customers/")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 5
+    
+    # Verify the top 5 customers are returned in correct order (descending by order count)
+    expected_top_5 = [
+        {"customer_id": customers[0]["id"], "first_name": "Customer0", "last_name": "Test0", "order_count": 15},
+        {"customer_id": customers[1]["id"], "first_name": "Customer1", "last_name": "Test1", "order_count": 12},
+        {"customer_id": customers[2]["id"], "first_name": "Customer2", "last_name": "Test2", "order_count": 10},
+        {"customer_id": customers[3]["id"], "first_name": "Customer3", "last_name": "Test3", "order_count": 8},
+        {"customer_id": customers[4]["id"], "first_name": "Customer4", "last_name": "Test4", "order_count": 6}
+    ]
+    
+    # Verify each of the top 5 customers
+    for i, expected_customer in enumerate(expected_top_5):
+        assert data[i]["customer_id"] == expected_customer["customer_id"]
+        assert data[i]["first_name"] == expected_customer["first_name"]
+        assert data[i]["last_name"] == expected_customer["last_name"]
+        assert data[i]["order_count"] == expected_customer["order_count"]
+    
+    # Verify that the customers are ordered by order_count in descending order
+    for i in range(len(data) - 1):
+        assert data[i]["order_count"] >= data[i + 1]["order_count"]
