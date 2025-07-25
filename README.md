@@ -15,8 +15,8 @@ FastAPI-based CRM system that manages customer records, orders, and addresses wi
 
 - Python 3.11
 - FastAPI
-- PostgreSQL
-- SQLAlchemy
+- SQLite
+- SQLAlchemy (psycopg can be utilized for Postgres with the same codebase)
 - pytest (testing)
 
 ## Project Structure
