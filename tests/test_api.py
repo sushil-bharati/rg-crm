@@ -266,3 +266,145 @@ def test_get_customer_order_history_by_phone(test_db):
         assert data["orders"][i]["shipping_addresses"][0]["state"] == customer_data["addresses"][1]["state"]
         assert data["orders"][i]["shipping_addresses"][0]["zip_code"] == customer_data["addresses"][1]["zip_code"]
         assert data["orders"][i]["shipping_addresses"][0]["type"] == customer_data["addresses"][1]["type"]
+
+def test_analytics_orders_by_shipping_zip(test_db):
+    # Create test customer first
+    customer_data = {
+        "telephone": "123-456-7890",
+        "email": "test@example.com",
+        "first_name": "John",
+        "last_name": "Doe",
+        "addresses": [
+            {
+                "type": "billing",
+                "street": "123 Main St",
+                "city": "Bill City",
+                "state": "BC",
+                "zip_code": "12345-6789"
+            },
+            {
+                "type": "shipping",
+                "street": "987 Main St",
+                "city": "Ship1 City",
+                "state": "SC",
+                "zip_code": "98765-4321"
+            },
+            {
+                "type": "shipping",
+                "street": "999 Main St",
+                "city": "Ship2 City",
+                "state": "XS",
+                "zip_code": "01234-9876"
+            }
+        ]
+    }
+    
+    customer_response = client.post("/customers/", json=customer_data)
+    customer_id = customer_response.json()["id"]
+    billing_address_id = customer_response.json()["addresses"][0]["id"]
+    shipping_address_id_1 = customer_response.json()["addresses"][1]["id"]
+    shipping_address_id_2 = customer_response.json()["addresses"][2]["id"]
+
+    # Create multiple orders across shipping addresses
+    # In the first shipping address, create 3 orders
+    for _ in range(3):
+        order_data = {
+            "order_type": "in_store",
+            "total_amount": random.random(),
+            "billing_address_id": billing_address_id,
+            "shipping_address_ids": [shipping_address_id_1]
+        }
+        client.post(f"/customers/{customer_id}/orders/", json=order_data)
+    # In the second shipping address, create 10 orders
+    for _ in range(10):
+        order_data = {
+            "order_type": "in_store",
+            "total_amount": random.random(),
+            "billing_address_id": billing_address_id,
+            "shipping_address_ids": [shipping_address_id_2]
+        }
+        client.post(f"/customers/{customer_id}/orders/", json=order_data)
+
+    # Test wrt shipping zip code, by default: ascending = True
+    response = client.get("/analytics/orders/by-zip/", params={"is_billing": False})
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) > 0
+    assert data[0]["zip_code"] == "98765-4321"
+    assert data[0]["order_count"] == 3
+    assert data[1]["zip_code"] == "01234-9876"
+    assert data[1]["order_count"] == 10
+
+def test_analytics_orders_by_billing_zip(test_db):
+    # Create test customer first
+    customer_data = {
+        "telephone": "123-456-7890",
+        "email": "test@example.com",
+        "first_name": "John",
+        "last_name": "Doe",
+        "addresses": [
+            {
+                "type": "billing",
+                "street": "123 Main St",
+                "city": "Bill City",
+                "state": "BC",
+                "zip_code": "12345-6789"
+            },
+            {
+                "type": "billing",
+                "street": "987 Main St",
+                "city": "Bill Pop City",
+                "state": "SC",
+                "zip_code": "98765-4321"
+            },
+            {
+                "type": "shipping",
+                "street": "404 Side St",
+                "city": "Ship City",
+                "state": "XY",
+                "zip_code": "96365"
+            }
+        ]
+    }
+    
+    customer_response = client.post("/customers/", json=customer_data)
+    customer_id = customer_response.json()["id"]
+    billing_address_id_1 = customer_response.json()["addresses"][0]["id"]
+    billing_address_id_2 = customer_response.json()["addresses"][1]["id"]
+    shipping_address_id = customer_response.json()["addresses"][1]["id"]
+
+    # Create multiple orders
+    # In the first billing address, create 7 orders
+    for _ in range(7):
+        order_data = {
+            "order_type": "in_store",
+            "total_amount": random.random(),
+            "billing_address_id": billing_address_id_1,
+            "shipping_address_ids": [shipping_address_id]
+        }
+        client.post(f"/customers/{customer_id}/orders/", json=order_data)
+    # In the second billing address, create 15 orders
+    for _ in range(15):
+        order_data = {
+            "order_type": "in_store",
+            "total_amount": random.random(),
+            "billing_address_id": billing_address_id_2,
+            "shipping_address_ids": [shipping_address_id]
+        }
+        client.post(f"/customers/{customer_id}/orders/", json=order_data)
+
+    # Test wrt billing zip code, this time descending
+    response = client.get(
+        "/analytics/orders/by-zip/", 
+        params={
+            "is_billing": True,
+            "ascending": False
+        }
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) > 0
+    assert data[0]["zip_code"] == "98765-4321"
+    assert data[0]["order_count"] == 15
+    assert data[1]["zip_code"] == "12345-6789"
+    assert data[1]["order_count"] == 7
